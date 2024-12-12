@@ -1,0 +1,12 @@
+# Set the default behavior, in case people don't have core.autocrlf set.
+* text=auto
+
+# Declare files that will always have CRLF/LF line endings on checkout.
+*.go text eol=crlf
+*.cmd text eol=crlf
+*.graphql text eol=crlf
+*.txt text eol=crlf
+*.css text eol=crlf
+*.yml text eol=crlf
+*.env text eol=crlf
+*.sh text eol=lf
