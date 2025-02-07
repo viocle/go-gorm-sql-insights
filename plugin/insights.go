@@ -36,13 +36,14 @@ type SQLInsights struct {
 	// stats channel to receive statistics from the Gorm callbacks
 	statsChan chan *stat
 	stopChan  chan chan struct{}
+	stopped   bool
 
 	statementMaps map[string]*sync.Map
 }
 
 type Config struct {
 	// DB is the GORM DB instance to store the SQL statistics at
-	// This Does not have to be the same DB instance as the one this plugin is being used as a plugin for to monitor
+	// This Does not have to be the same DB instance as the one this plugin is being used as a plugin for it to monitor
 	DB *gorm.DB
 
 	// InstanceID is the ID/name of the application this plugin is being used in. Something unique to distinqguish this instance from other instances of the same or different applications
@@ -53,6 +54,9 @@ type Config struct {
 	// A value <1 means do not collect callers
 	CollectCallerDepth int
 
+	// MaxStatisticsBufferSize is the maximum number of statistics to buffer before before blocking
+	MaxStatisticsBufferSize int
+
 	// AutoPurgeAge is the age at which old statistics are automatically purged from the DB. A value of <=0 means do not automatically purge old statistics
 	AutoPurgeAge time.Duration
 
@@ -61,11 +65,26 @@ type Config struct {
 
 	// DashboardConfig is the configuration for the dashboard user interface
 	DashboardConfig *DashboardConfig
+
+	// The maximum time to wait for the plugin to stop and flush any remaining statistics to the DB when being unregistered
+	StopTimeLimit time.Duration
 }
 
 // New creates a new Gorm SQLInsights plugin with specified config and starts the background collector and reporter.
 // When the plugin is no longer needed, call Stop() to unregister this plugin and stop the background collector and reporter processes as well as store any existing statistics that haven't been reported yet
 func New(config Config) *SQLInsights {
+	// set default values if not specified
+	if config.CollectCallerDepth < 0 {
+		config.CollectCallerDepth = 0
+	}
+	if config.MaxStatisticsBufferSize <= 0 {
+		config.MaxStatisticsBufferSize = 100
+	}
+	if config.AutoPurgeAge <= 0 {
+		config.AutoPurgeAge = time.Hour * 24 // 24 hours
+	}
+
+	// create our new SQLInsights plugin instance
 	ret := &SQLInsights{
 		instanceAppID: -1,
 		config:        config,
@@ -73,10 +92,11 @@ func New(config Config) *SQLInsights {
 		keyHashes:     make(map[string]struct{}, 1),
 		callerHashes:  make(map[string]map[string]struct{}, 1),
 		statsLock:     sync.Mutex{},
-		statsChan:     make(chan *stat, 100), // allow buffering up to 100 stats
+		statsChan:     make(chan *stat, config.MaxStatisticsBufferSize), // allow buffering of stats without blocking
 		stopChan:      make(chan chan struct{}),
 		statementMaps: map[string]*sync.Map{_statTypeQuery.String(): {}, _statTypeRaw.String(): {}},
 	}
+	// set up a default dashboard config if one is not provided
 	if config.DashboardConfig == nil {
 		config.DashboardConfig = &DashboardConfig{
 			TimeLocation: time.UTC,
@@ -135,10 +155,19 @@ func New(config Config) *SQLInsights {
 	return ret
 }
 
+// IsStopped returns true if the plugin has been stopped
+func (s *SQLInsights) IsStopped() bool {
+	s.statsLock.Lock()
+	defer s.statsLock.Unlock()
+	return s.stopped
+}
+
 // Stop stops the plugin from collecting and reporting statistics. The allowedWaitTime parameter specifies how long to wait for the collector to finishing draining uncollected statistics before exiting
 func (s *SQLInsights) Stop(allowedWaitTime time.Duration) error {
-	// unregister the plugin from our DB instance
-	_ = s.unregister()
+	if s.IsStopped() {
+		// already stopped
+		return nil
+	}
 
 	// signal to stop the collector, waiting for it to be received
 	stoppedChan := make(chan struct{})
@@ -154,8 +183,11 @@ func (s *SQLInsights) Stop(allowedWaitTime time.Duration) error {
 	// collect remaining statistics
 	_ = s.unsafeDrainStatsChannel(allowedWaitTime)
 
-	// flush any existing statistics
+	// flush any existing statistics to the DB
 	s.unsafeReportStatistics(time.Now().UTC())
+
+	// mark as stopped
+	s.stopped = true
 
 	return nil
 }

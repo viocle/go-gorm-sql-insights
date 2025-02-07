@@ -52,6 +52,9 @@ func (s *SQLInsights) unregister() (err error) {
 		return gorm.ErrInvalidDB
 	}
 
+	// stop the plugin and flush all data to the DB
+	s.Stop(s.config.StopTimeLimit)
+
 	// Unregister our callbacks from the stored gorm DB instance we received during initialization
 	for _, e := range []error{
 		s._db.Callback().Query().Remove(_eventBeforeQuery),
