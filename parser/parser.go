@@ -2,7 +2,6 @@ package parser
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 	"slices"
 
@@ -18,26 +17,10 @@ const (
 	parsedFieldsAreaFrom    parsedFieldsArea = "FROM"
 	parsedFieldsAreaWhere   parsedFieldsArea = "WHERE"
 	parsedFieldsAreaGroupBy parsedFieldsArea = "GROUP BY"
+	parsedFieldsAreaSelect  parsedFieldsArea = "SELECT"
 )
 
 type parsedFieldsArea string
-
-type ParsedFields struct {
-	// FromFields is a map of all references to table names and their fields from the FROM clause (includes JOINs)
-	FromFields map[string][]string
-
-	// WhereFields is a map of all references to table names and their fields from the WHERE clause
-	WhereFields map[string][]string
-
-	// GroupByFields is a map of all references to table names and their fields from the GROUP BY clause
-	GroupByFields map[string][]string
-
-	// TableFields is a map of all references to table names and their fields
-	TableFields map[string][]string
-
-	// AliasMap is a map of table aliases to table names
-	AliasMap map[string]string
-}
 
 // ParseSQL parses the SQL string and returns a ParsedFields struct
 func ParseSQL(sql string) (*ParsedFields, error) {
@@ -73,6 +56,12 @@ func ParseSQL(sql string) (*ParsedFields, error) {
 func processStatement(stmt sqlparser.Statement, f *ParsedFields) {
 	switch s := stmt.(type) {
 	case *sqlparser.Select:
+		if s.SelectExprs != nil {
+			// get all fields used in SELECT
+			for _, expr := range s.SelectExprs {
+				GetFieldsFromExpr(parsedFieldsAreaSelect, f, expr, nil)
+			}
+		}
 		// get all fields used in FROM, WHERE, HAVING, GROUP BY used in our SELECT statement
 		for _, fromExp := range s.From {
 			GetFieldsFromExpression(parsedFieldsAreaFrom, f, fromExp)
@@ -87,40 +76,6 @@ func processStatement(stmt sqlparser.Statement, f *ParsedFields) {
 			for _, expr := range s.GroupBy.Exprs {
 				GetFieldsFromExpr(parsedFieldsAreaGroupBy, f, expr, nil)
 			}
-		}
-	}
-}
-
-// MergeAliasTables merges the table names where an alias is used
-func (f *ParsedFields) MergeAliasTables() {
-	for alias, tableName := range f.AliasMap {
-		mergeTableFields(f.FromFields, alias, tableName)
-		mergeTableFields(f.WhereFields, alias, tableName)
-		mergeTableFields(f.GroupByFields, alias, tableName)
-		mergeTableFields(f.TableFields, alias, tableName)
-	}
-}
-
-// PurgeEmptyTables removes any tables that have no fields
-func (f *ParsedFields) PurgeEmptyTables() {
-	for tableName, fields := range f.FromFields {
-		if len(fields) == 0 {
-			delete(f.FromFields, tableName)
-		}
-	}
-	for tableName, fields := range f.WhereFields {
-		if len(fields) == 0 {
-			delete(f.WhereFields, tableName)
-		}
-	}
-	for tableName, fields := range f.GroupByFields {
-		if len(fields) == 0 {
-			delete(f.GroupByFields, tableName)
-		}
-	}
-	for tableName, fields := range f.TableFields {
-		if len(fields) == 0 {
-			delete(f.TableFields, tableName)
 		}
 	}
 }
@@ -146,27 +101,13 @@ func mergeTableFields(fieldMap map[string][]string, aliasKey, tableKey string) {
 	}
 }
 
-// AddTableField adds a field to the list of fields for a table in a specific area
-func (f *ParsedFields) AddTableField(area parsedFieldsArea, tableName, fieldName string) {
-	// add field to specific area
-	switch area {
-	case parsedFieldsAreaFrom:
-		// field found in FROM clause, includes JOINs
-		addTableField(f.FromFields, tableName, fieldName)
-	case parsedFieldsAreaWhere:
-		// field found in WHERE clause
-		addTableField(f.WhereFields, tableName, fieldName)
-	case parsedFieldsAreaGroupBy:
-		// field found in GROUP BY clause
-		addTableField(f.GroupByFields, tableName, fieldName)
-	}
-	// add field to full list of table fields
-	addTableField(f.TableFields, tableName, fieldName)
-}
-
 // addTableField adds a field for a table to the provided list of table fields
 func addTableField(tableFields map[string][]string, tableName, fieldName string) {
-	if tableName == "" || fieldName == "" {
+	if tableName == "dual" {
+		// ignore dual table, this is a dummy derived table
+		return
+	}
+	if fieldName == "" {
 		return
 	}
 	if _, ok := tableFields[tableName]; !ok {
@@ -176,23 +117,6 @@ func addTableField(tableFields map[string][]string, tableName, fieldName string)
 		return
 	}
 	tableFields[tableName] = append(tableFields[tableName], fieldName)
-}
-
-// AddTable adds a table to the list of tables, with an optional alias
-func (f *ParsedFields) AddTable(tableName, as string) {
-	if tableName == "dual" {
-		fmt.Println("Found dual table")
-	}
-	if as != "" {
-		// add alias
-		if _, ok := f.AliasMap[as]; !ok {
-			f.AliasMap[as] = tableName
-		}
-	}
-	if _, ok := f.TableFields[tableName]; !ok {
-		// add new table to the list of tables
-		f.TableFields[tableName] = make([]string, 0, 10)
-	}
 }
 
 // GetFieldsFromExpression gets fields from the join table expression, processing table name aliases if present
@@ -211,13 +135,34 @@ func GetFieldsFromExpression(area parsedFieldsArea, tableFields *ParsedFields, e
 			}
 		}
 	case *sqlparser.AliasedTableExpr:
-		GetFieldsFromExpr(area, tableFields, e.Expr, &e.As)
+		if e.Expr != nil {
+			if tableFields.DefaultTableName == "" {
+				// no default table name set, check if we have a table name defined in this expression
+				switch eTyped := e.Expr.(type) {
+				case sqlparser.TableName:
+					// we have a table name, mark as default table
+					tableName := eTyped.Name.String()
+					if tableName == "dual" {
+						// ignore dual table, this is a dummy derived table
+						break
+					}
+					as := eTyped.Qualifier.String()
+					if as != "" {
+						// an alias is present
+						tableFields.AddTable(tableName, as)
+					} else {
+						tableFields.AddTable(tableName, "")
+					}
+					tableFields.DefaultTableName = tableName
+				}
+			}
+			GetFieldsFromExpr(area, tableFields, e.Expr, &e.As)
+		}
 	case *sqlparser.ParenTableExpr:
 		for _, expr := range e.Exprs {
 			GetFieldsFromExpression(area, tableFields, expr)
 		}
 	default:
-		fmt.Printf("(getFieldsFromExpression) Unknown type: %T\n", e)
 	}
 }
 
@@ -225,6 +170,18 @@ func GetFieldsFromExpression(area parsedFieldsArea, tableFields *ParsedFields, e
 func GetFieldsFromExpr(area parsedFieldsArea, tableFields *ParsedFields, e interface{}, as *sqlparser.IdentifierCS) {
 	if e == nil {
 		return
+	}
+	if area == parsedFieldsAreaSelect {
+		switch e := e.(type) {
+		case *sqlparser.AliasedExpr:
+			if name := e.As.String(); name != "" {
+				// we got a SELECT field alias
+				if !slices.Contains(tableFields.selectAliases, name) {
+					tableFields.selectAliases = append(tableFields.selectAliases, name)
+				}
+				return
+			}
+		}
 	}
 	switch e := e.(type) {
 	case *sqlparser.DerivedTable:

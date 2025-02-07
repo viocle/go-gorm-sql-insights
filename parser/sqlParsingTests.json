@@ -1,0 +1,261 @@
+[
+	{
+		"SQL": "SELECT * FROM (SELECT @row := @row +1 AS row_num, case_page_ranking.* FROM (SELECT @row :=0) AS r_counter, (SELECT inside_joiner.* FROM (SELECT `cases`.c_num AS id, IFNULL(case_sort_attr_items.value_number, 0) AS val_number FROM `cases` JOIN attr AS at102 ON at102.organization_id = cases.organization_id AND at102.name = 'WEIGHT' AND at102.deleted_at IS NULL LEFT OUTER JOIN attr_items AS ai102 ON ai102.organization_id = cases.organization_id AND ai102.ref_id = cases.id AND ai102.deleted_at IS NULL AND ai102.attr_id = at102.id JOIN attr AS at202 ON at202.organization_id = cases.organization_id AND at202.name = 'WEIGHT' AND at202.deleted_at IS NULL LEFT OUTER JOIN attr_items AS ai202 ON ai202.organization_id = cases.organization_id AND ai202.ref_id = cases.id AND ai202.deleted_at IS NULL AND ai202.attr_id = at202.id LEFT OUTER JOIN attr_items AS case_sort_attr_items ON case_sort_attr_items.ref_id = cases.id AND case_sort_attr_items.attr_id = 'attr_sometestattributeid' AND case_sort_attr_items.deleted_at IS NULL WHERE (cases.organization_id = 'org_20020RWDDG6AGQF9' AND cases.deleted_at IS NULL) AND (((IFNULL(cases.status,'') = 'ACTIVE') AND (cases.test IS NULL OR cases.test = FALSE) AND (ai102.value_number IS NOT NULL AND ai102.value_number < 10)) OR ((IFNULL(cases.status,'') = 'ACTIVE') AND (cases.test IS NULL OR cases.test = FALSE) AND (ai202.value_number IS NOT NULL AND ai202.value_number > 20))) GROUP BY cases.c_num, IFNULL(case_sort_attr_items.value_number, 0) ORDER BY IFNULL(case_sort_attr_items.value_number, 0) DESC, cases.c_num DESC) AS inside_joiner) AS case_page_ranking) AS final_page_ranking WHERE row_num = 1 OR row_num % 10 = 1",
+		"Result": {
+			"FromFields": {
+				"attr_items": [
+					"organization_id",
+					"ref_id",
+					"deleted_at",
+					"attr_id"
+				],
+				"attr": [
+					"organization_id",
+					"name",
+					"deleted_at",
+					"id"
+				],
+				"cases": [
+					"organization_id",
+					"id"
+				]
+			},
+			"WhereFields": {
+				"attr_items": [
+					"value_number"
+				],
+				"cases": [
+					"organization_id",
+					"deleted_at",
+					"status",
+					"test"
+				]
+			},
+			"GroupByFields": {
+				"attr_items": [
+					"value_number"
+				],
+				"cases": [
+					"c_num"
+				]
+			},
+			"TableFields": {
+				"attr_items": [
+					"organization_id",
+					"ref_id",
+					"deleted_at",
+					"attr_id",
+					"value_number"
+				],
+				"attr": [
+					"organization_id",
+					"name",
+					"deleted_at",
+					"id"
+				],
+				"cases": [
+					"organization_id",
+					"id",
+					"deleted_at",
+					"status",
+					"test",
+					"c_num"
+				]
+			},
+			"AliasMap": {
+				"ai102": "attr_items",
+				"ai202": "attr_items",
+				"at102": "attr",
+				"at202": "attr",
+				"case_sort_attr_items": "attr_items"
+			},
+			"DefaultTableName": "cases"
+		}
+	},
+	{
+		"SQL": "SELECT * FROM `organizations` WHERE sub_d = 'test' AND `organizations`.`deleted_at` IS NULL ORDER BY `organizations`.`id` LIMIT 1",
+		"Result": {
+			"FromFields": {},
+			"WhereFields": {
+				"organizations": [
+					"deleted_at",
+					"sub_d"
+				]
+			},
+			"GroupByFields": {},
+			"TableFields": {
+				"organizations": [
+					"deleted_at",
+					"sub_d"
+				]
+			},
+			"AliasMap": {},
+			"DefaultTableName": "organizations"
+		}
+	},
+	{
+		"SQL": "SELECT * FROM `org_settings` WHERE organization_id = 'org_sometestorgid' AND type = 'MESSAGE' AND area = 'ORGANIZATION' AND (role_id_values IS NULL OR role_id_values LIKE '%role_sometestroleid%') AND `org_settings`.`deleted_at` IS NULL ORDER BY organization_id ASC,name ASC",
+		"Result": {
+			"FromFields": {},
+			"WhereFields": {
+				"org_settings": [
+					"deleted_at",
+					"organization_id",
+					"type",
+					"area",
+					"role_id_values"
+				]
+			},
+			"GroupByFields": {},
+			"TableFields": {
+				"org_settings": [
+					"deleted_at",
+					"organization_id",
+					"type",
+					"area",
+					"role_id_values"
+				]
+			},
+			"AliasMap": {},
+			"DefaultTableName": "org_settings"
+		}
+	},
+	{
+		"SQL": "SELECT id, organization_id, first_name FROM cases AS C WHERE c.organization_id = 'org_sometestorgid' AND c.deleted_at IS NULL AND c.status = 'ACTIVE' ORDER BY c.created_at DESC",
+		"Result": {
+			"FromFields": {},
+			"WhereFields": {
+				"cases": [
+					"organization_id",
+					"deleted_at",
+					"status"
+				]
+			},
+			"GroupByFields": {},
+			"TableFields": {
+				"cases": [
+					"organization_id",
+					"deleted_at",
+					"status"
+				]
+			},
+			"AliasMap": {
+				"C": "cases"
+			},
+			"DefaultTableName": "cases"
+		}
+	},
+	{
+		"SQL": "SELECT COUNT(distinct invites.id) as created, SUM(if(sessions.id IS NULL, 0, 1)) as started, SUM(coalesce(sessions.completed, 0)) as completed FROM `invites` LEFT JOIN sessions on invites.id = sessions.surv_inv_id AND sessions.deleted_at IS NULL LEFT JOIN cases ON sessions.case_id IS NOT NULL AND cases.organization_id = sessions.organization_id AND cases.id = sessions.case_id AND cases.deleted_at IS NULL LEFT JOIN cases AS invite_cases on invites.case_id IS NOT NULL AND invites.case_id = invite_cases.id WHERE (invites.organization_id = 'org_2008J6ILFGISRUVE' AND invites.deleted_at IS NULL AND invites.created_at >= '2024-09-01 04:00:00' AND invites.created_at < '2025-01-01 05:00:00') AND (((sessions.case_id IS NULL OR sessions.case_id = '') OR cases.id IS NOT NULL)) AND (cases.test IS NULL OR cases.test = FALSE) AND (invite_cases.test IS NULL OR invite_cases.test = FALSE)",
+		"Result": {
+			"FromFields": {
+				"cases": [
+					"organization_id",
+					"id",
+					"deleted_at"
+				],
+				"invites": [
+					"id",
+					"case_id"
+				],
+				"sessions": [
+					"surv_inv_id",
+					"deleted_at",
+					"case_id",
+					"organization_id"
+				]
+			},
+			"WhereFields": {
+				"cases": [
+					"id",
+					"test"
+				],
+				"invites": [
+					"organization_id",
+					"deleted_at",
+					"created_at"
+				],
+				"sessions": [
+					"case_id"
+				]
+			},
+			"GroupByFields": {},
+			"TableFields": {
+				"cases": [
+					"organization_id",
+					"id",
+					"deleted_at",
+					"test"
+				],
+				"invites": [
+					"id",
+					"case_id",
+					"organization_id",
+					"deleted_at",
+					"created_at"
+				],
+				"sessions": [
+					"surv_inv_id",
+					"deleted_at",
+					"case_id",
+					"organization_id"
+				]
+			},
+			"AliasMap": {
+				"invite_cases": "cases"
+			},
+			"DefaultTableName": "invites"
+		}
+	},
+	{
+		"SQL": "SELECT alerts.*, if(ua.id IS NULL, false, true) AS user_ack FROM `alerts` LEFT JOIN user_acks ua ON ua.user_id = 'user_sometestuserid' AND ua.ack_type = 'ALERT' AND ua.ack_id = alerts.id JOIN organizations o ON o.id = 'org_sometestorgid' WHERE (alerts.created_at > '2024-11-07 17:25:43.693' AND ((alerts.feature_cs IS NULL OR alerts.feature_cs = FALSE) OR alerts.feature_cs = o.feature_cs)) AND `alerts`.`deleted_at` IS NULL",
+		"Result": {
+			"FromFields": {
+				"alerts": [
+					"id"
+				],
+				"organizations": [
+					"id"
+				],
+				"user_acks": [
+					"user_id",
+					"ack_type",
+					"ack_id"
+				]
+			},
+			"WhereFields": {
+				"alerts": [
+					"created_at",
+					"feature_cs",
+					"deleted_at"
+				],
+				"organizations": [
+					"feature_cs"
+				]
+			},
+			"GroupByFields": {},
+			"TableFields": {
+				"alerts": [
+					"id",
+					"created_at",
+					"feature_cs",
+					"deleted_at"
+				],
+				"organizations": [
+					"id",
+					"feature_cs"
+				],
+				"user_acks": [
+					"user_id",
+					"ack_type",
+					"ack_id"
+				]
+			},
+			"AliasMap": {
+				"o": "organizations",
+				"ua": "user_acks"
+			},
+			"DefaultTableName": "alerts"
+		}
+	}
+]

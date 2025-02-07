@@ -1,4 +1,9 @@
 # GORM SQL Insights Plugin
+[![Go Report Card](https://goreportcard.com/badge/github.com/viocle/go-gorm-sql-insights)](https://goreportcard.com/report/github.com/viocle/go-gorm-sql-insights) 
+[![GoDoc](https://godoc.org/github.com/viocle/go-gorm-sql-insights?status.svg)](https://godoc.org/github.com/viocle/go-gorm-sql-insights)
+[![tests](https://github.com/viocle/go-gorm-sql-insights/actions/workflows/tests.yml/badge.svg)](https://github.com/viocle/go-gorm-sql-insights/actions/workflows/tests.yml)
+
+This is a [GORM](https://gorm.io/index.html) plugin to help gather insights into SQL queries being performed. The goal of this project is to make it easier to see the frequency of queries, their timing, and the resources consumed around them giving you the information to be better informed on queries that may need to be optimized through restructuring the SQL statement, changes to indexing, or utilize caching/dataloader technologies.
 
 ## How to use
 Register this plugin using the `Use` method on the `*gorm.DB` instance you want to monitor. Example, add a generic addPlugins function to load your plugins, passing your *gorm.DB reference:
@@ -54,4 +59,16 @@ BenchmarkSQLInsights/queryNoHooks-24              316801              3475 ns/op
 BenchmarkSQLInsights/queryHooks-24                166797              6231 ns/op            4489 B/op         72 allocs/op
 PASS
 ok      github.com/viocle/go-gorm-sql-insights/plugin   6.064s
+```
+```
+> go version
+go version go1.23.6 windows/amd64
+> go test -benchmem -run=^$ -bench ^BenchmarkParseSQL$
+goos: windows
+goarch: amd64
+pkg: github.com/viocle/go-gorm-sql-insights/parser
+cpu: AMD Ryzen 9 5900X 12-Core Processor
+BenchmarkParseSQL-24                6280            187580 ns/op          111829 B/op        977 allocs/op
+PASS
+ok      github.com/viocle/go-gorm-sql-insights/parser   2.450s
 ```
