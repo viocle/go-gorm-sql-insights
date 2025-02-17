@@ -27,8 +27,8 @@ func getCallers(depth int) []*callerInfo {
 		// not collecting callers
 		return nil
 	}
-	// storage for caller function pointers, allocate max capacity of 15
-	fptrs := make([]uintptr, 15)
+	// storage for caller function pointers, allocate min capacity of 15
+	fptrs := make([]uintptr, 5+depth)
 	// get callers, skip 5 levels (this function, our caller, and the gorm related functions)
 	if runtime.Callers(5, fptrs) == 0 {
 		// nothing there, return blank
@@ -38,6 +38,9 @@ func getCallers(depth int) []*callerInfo {
 	// loop through callers and collect function call stack details
 	ret := make([]*callerInfo, 0, depth)
 	for _, p := range fptrs {
+		if p == 0 {
+			continue
+		}
 		if f := runtime.FuncForPC(p); f != nil {
 			// get line function name
 			funcNameWithPath := f.Name()

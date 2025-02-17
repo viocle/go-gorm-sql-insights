@@ -26,9 +26,15 @@ func BenchmarkParseSQL(b *testing.B) {
 		b.Fatalf("No test data found")
 	}
 	b.ResetTimer()
+	// create our new parser
+	parser, err := New(Config{})
+	if err != nil {
+		b.Fatalf("Error creating parser: %v", err)
+	}
+	// run our tests in this benchmark
 	for i := 0; i < b.N; i++ {
 		for _, test := range tests {
-			ParseSQL(test.SQL)
+			parser.ParseSQL(test.SQL)
 		}
 	}
 }
@@ -39,6 +45,7 @@ func TestSQLParsing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error reading test example data: %v", err)
 	}
+	// unmarshal the test data
 	var tests []testSQLParsingTests
 	if err := json.Unmarshal(testData, &tests); err != nil {
 		t.Fatalf("Error unmarshalling test example data: %v", err)
@@ -46,8 +53,14 @@ func TestSQLParsing(t *testing.T) {
 	if len(tests) == 0 {
 		t.Fatalf("No test data found")
 	}
+	// create our new parser
+	parser, err := New(Config{})
+	if err != nil {
+		t.Fatalf("Error creating parser: %v", err)
+	}
+	// run our tests
 	for idx, test := range tests {
-		f, err := ParseSQL(test.SQL)
+		f, err := parser.ParseSQL(test.SQL)
 		if err != nil {
 			t.Fatalf("Error parsing SQL: %v", err)
 		} else if f == nil {

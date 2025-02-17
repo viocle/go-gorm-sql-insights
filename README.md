@@ -48,27 +48,27 @@ go test -benchmem -run=^$ -bench ^BenchmarkSQLInsights$ -cpuprofile=cpu -memprof
 ```
 Benchmark Results:
 ```
-> go version
-go version go1.23.6 windows/amd64
-> go test -benchmem -run=^$ -bench ^BenchmarkSQLInsights$
+plugin\> go version
+go version go1.24.0 windows/amd64
+plugin\> go test -benchmem -run=^$ -bench ^BenchmarkSQLInsights$
 goos: windows
 goarch: amd64
 pkg: github.com/viocle/go-gorm-sql-insights/plugin
 cpu: AMD Ryzen 9 5900X 12-Core Processor
-BenchmarkSQLInsights/queryNoHooks-24              316801              3475 ns/op            3412 B/op         47 allocs/op
-BenchmarkSQLInsights/queryHooks-24                166797              6231 ns/op            4489 B/op         72 allocs/op
+BenchmarkSQLInsights/queryNoHooks-24              331490              3390 ns/op            3420 B/op         44 allocs/op
+BenchmarkSQLInsights/queryHooks-24                174385              6006 ns/op            4439 B/op         65 allocs/op
 PASS
-ok      github.com/viocle/go-gorm-sql-insights/plugin   6.064s
+ok      github.com/viocle/go-gorm-sql-insights/plugin   5.696s
 ```
 ```
 > go version
-go version go1.23.6 windows/amd64
-> go test -benchmem -run=^$ -bench ^BenchmarkParseSQL$
+go version go1.24.0 windows/amd64
+parser\> go test -benchmem -run=^$ -bench ^BenchmarkParseSQL$
 goos: windows
 goarch: amd64
 pkg: github.com/viocle/go-gorm-sql-insights/parser
 cpu: AMD Ryzen 9 5900X 12-Core Processor
-BenchmarkParseSQL-24                6280            187580 ns/op          111829 B/op        977 allocs/op
+BenchmarkParseSQL-24                6136            172251 ns/op          112533 B/op        995 allocs/op
 PASS
-ok      github.com/viocle/go-gorm-sql-insights/parser   2.450s
+ok      github.com/viocle/go-gorm-sql-insights/parser   1.440s
 ```

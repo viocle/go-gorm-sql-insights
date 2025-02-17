@@ -11,6 +11,7 @@ import (
 
 var (
 	ErrSQLStringEmpty = errors.New("SQL string is empty")
+	ErrParserNotReady = errors.New("Parser is not ready. Call New() to create a new parser")
 )
 
 const (
@@ -22,13 +23,18 @@ const (
 
 type parsedFieldsArea string
 
-// ParseSQL parses the SQL string and returns a ParsedFields struct
-func ParseSQL(sql string) (*ParsedFields, error) {
-	if sql == "" {
-		return nil, ErrSQLStringEmpty
-	}
-	// create our new parser and parse it
-	sParser, err := sqlparser.New(sqlparser.Options{
+// Parser is our SQL parser and configuration
+type Parser struct {
+	parser *sqlparser.Parser
+	config Config
+}
+
+// Config defines the configuration for the parser
+type Config struct{}
+
+// New creates a new parser
+func New(cfg Config) (*Parser, error) {
+	p, err := sqlparser.New(sqlparser.Options{
 		MySQLServerVersion: config.DefaultMySQLVersion,
 		TruncateUILen:      512,
 		TruncateErrLen:     0,
@@ -36,7 +42,17 @@ func ParseSQL(sql string) (*ParsedFields, error) {
 	if err != nil {
 		return nil, err
 	}
-	stmt, err := sParser.Parse(sql)
+	return &Parser{parser: p}, nil
+}
+
+// ParseSQL parses the SQL string and returns a ParsedFields struct
+func (p *Parser) ParseSQL(sql string) (*ParsedFields, error) {
+	if sql == "" {
+		return nil, ErrSQLStringEmpty
+	} else if p.parser == nil {
+		return nil, ErrParserNotReady
+	}
+	stmt, err := p.parser.Parse(sql)
 	if err != nil {
 		return nil, err
 	}
@@ -53,28 +69,29 @@ func ParseSQL(sql string) (*ParsedFields, error) {
 	return f, nil
 }
 
+// processStatement processes a sqlparser.Statement and extracts fields from the statement
 func processStatement(stmt sqlparser.Statement, f *ParsedFields) {
 	switch s := stmt.(type) {
 	case *sqlparser.Select:
 		if s.SelectExprs != nil {
 			// get all fields used in SELECT
 			for _, expr := range s.SelectExprs {
-				GetFieldsFromExpr(parsedFieldsAreaSelect, f, expr, nil)
+				getFieldsFromExpr(parsedFieldsAreaSelect, f, expr, nil)
 			}
 		}
 		// get all fields used in FROM, WHERE, HAVING, GROUP BY used in our SELECT statement
 		for _, fromExp := range s.From {
-			GetFieldsFromExpression(parsedFieldsAreaFrom, f, fromExp)
+			getFieldsFromExpression(parsedFieldsAreaFrom, f, fromExp)
 		}
 		if s.Where != nil {
-			GetFieldsFromExpr(parsedFieldsAreaWhere, f, s.Where.Expr, nil)
+			getFieldsFromExpr(parsedFieldsAreaWhere, f, s.Where.Expr, nil)
 		}
 		if s.Having != nil {
-			GetFieldsFromExpr(parsedFieldsAreaWhere, f, s.Having.Expr, nil)
+			getFieldsFromExpr(parsedFieldsAreaWhere, f, s.Having.Expr, nil)
 		}
 		if s.GroupBy != nil {
 			for _, expr := range s.GroupBy.Exprs {
-				GetFieldsFromExpr(parsedFieldsAreaGroupBy, f, expr, nil)
+				getFieldsFromExpr(parsedFieldsAreaGroupBy, f, expr, nil)
 			}
 		}
 	}
@@ -119,22 +136,24 @@ func addTableField(tableFields map[string][]string, tableName, fieldName string)
 	tableFields[tableName] = append(tableFields[tableName], fieldName)
 }
 
-// GetFieldsFromExpression gets fields from the join table expression, processing table name aliases if present
-func GetFieldsFromExpression(area parsedFieldsArea, tableFields *ParsedFields, exp sqlparser.TableExpr) {
+// getFieldsFromExpression gets fields from the join table expression, processing table name aliases if present
+func getFieldsFromExpression(area parsedFieldsArea, tableFields *ParsedFields, exp sqlparser.TableExpr) {
 	switch e := exp.(type) {
 	case *sqlparser.JoinTableExpr:
+		// join table expression, process left and right expressions and conditions
 		if e.LeftExpr != nil {
-			GetFieldsFromExpression(area, tableFields, e.LeftExpr)
+			getFieldsFromExpression(area, tableFields, e.LeftExpr)
 		}
 		if e.RightExpr != nil {
-			GetFieldsFromExpression(area, tableFields, e.RightExpr)
+			getFieldsFromExpression(area, tableFields, e.RightExpr)
 		}
 		if e.Condition != nil {
 			if e.Condition.On != nil {
-				GetFieldsFromExpr(area, tableFields, e.Condition.On, nil)
+				getFieldsFromExpr(area, tableFields, e.Condition.On, nil)
 			}
 		}
 	case *sqlparser.AliasedTableExpr:
+		// aliased table expression, process the expression and alias
 		if e.Expr != nil {
 			if tableFields.DefaultTableName == "" {
 				// no default table name set, check if we have a table name defined in this expression
@@ -156,21 +175,23 @@ func GetFieldsFromExpression(area parsedFieldsArea, tableFields *ParsedFields, e
 					tableFields.DefaultTableName = tableName
 				}
 			}
-			GetFieldsFromExpr(area, tableFields, e.Expr, &e.As)
+			getFieldsFromExpr(area, tableFields, e.Expr, &e.As)
 		}
 	case *sqlparser.ParenTableExpr:
+		// parenthesized table expression, process the expression
 		for _, expr := range e.Exprs {
-			GetFieldsFromExpression(area, tableFields, expr)
+			getFieldsFromExpression(area, tableFields, expr)
 		}
 	default:
 	}
 }
 
-// GetFieldsFromExpr gets fields from the expression, processing table name aliases if present
-func GetFieldsFromExpr(area parsedFieldsArea, tableFields *ParsedFields, e interface{}, as *sqlparser.IdentifierCS) {
+// getFieldsFromExpr gets fields from the expression, processing table name aliases if present
+func getFieldsFromExpr(area parsedFieldsArea, tableFields *ParsedFields, e interface{}, as *sqlparser.IdentifierCS) {
 	if e == nil {
 		return
 	}
+	// check if we have a SELECT field alias
 	if area == parsedFieldsAreaSelect {
 		switch e := e.(type) {
 		case *sqlparser.AliasedExpr:
@@ -195,7 +216,7 @@ func GetFieldsFromExpr(area parsedFieldsArea, tableFields *ParsedFields, e inter
 	case *sqlparser.ColName:
 		// column name referenced
 		if e != nil {
-			GetFieldsFromExpr(area, tableFields, *e, nil)
+			getFieldsFromExpr(area, tableFields, *e, nil)
 		}
 	case sqlparser.TableName:
 		// we have a table name
@@ -208,23 +229,23 @@ func GetFieldsFromExpr(area parsedFieldsArea, tableFields *ParsedFields, e inter
 	case *sqlparser.TableName:
 		// we have a table name, dereference the pointer and call the function again
 		if e != nil {
-			GetFieldsFromExpr(area, tableFields, e, nil)
+			getFieldsFromExpr(area, tableFields, e, nil)
 		}
 	case *sqlparser.GroupBy:
 		for _, expr := range e.Exprs {
-			GetFieldsFromExpr(area, tableFields, expr, nil)
+			getFieldsFromExpr(area, tableFields, expr, nil)
 		}
 	case []*sqlparser.Expr:
 		// array of pointers to expressions
 		for _, expr := range e {
 			if expr != nil {
-				GetFieldsFromExpr(area, tableFields, expr, nil)
+				getFieldsFromExpr(area, tableFields, expr, nil)
 			}
 		}
 	case []sqlparser.Expr:
 		// array of expressions
 		for _, expr := range e {
-			GetFieldsFromExpr(area, tableFields, expr, nil)
+			getFieldsFromExpr(area, tableFields, expr, nil)
 		}
 	case *sqlparser.Literal, sqlparser.Literal, *sqlparser.NullVal, sqlparser.NullVal, *sqlparser.BoolVal, sqlparser.BoolVal, *sqlparser.ListArg, sqlparser.ListArg, *sqlparser.Scope, sqlparser.Scope, *sqlparser.BinaryExprOperator, sqlparser.BinaryExprOperator, *sqlparser.UnaryExprOperator, sqlparser.UnaryExprOperator:
 		// explicitly ignore
@@ -244,7 +265,7 @@ func GetFieldsFromExpr(area parsedFieldsArea, tableFields *ParsedFields, e inter
 			// slice of values, process each one
 			for i := 0; i < valueOf.Len(); i++ {
 				if valueOfI := valueOf.Index(i).Interface(); valueOfI != nil {
-					GetFieldsFromExpr(area, tableFields, valueOfI, nil)
+					getFieldsFromExpr(area, tableFields, valueOfI, nil)
 				}
 			}
 			return
@@ -257,7 +278,7 @@ func GetFieldsFromExpr(area parsedFieldsArea, tableFields *ParsedFields, e inter
 				if fieldTypeName == "Expr" || fieldTypeName == "*Expr" || fieldTypeName == "Exprs" {
 					// found an Expr type
 					if fieldI := field.Interface(); fieldI != nil {
-						GetFieldsFromExpr(area, tableFields, fieldI, nil)
+						getFieldsFromExpr(area, tableFields, fieldI, nil)
 					}
 				}
 			}

@@ -86,7 +86,7 @@ golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/width
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20250204164813-702378808489
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20250212204824-5a70512c5d8b
 ## explicit; go 1.22
 google.golang.org/genproto/googleapis/rpc/status
 # google.golang.org/grpc v1.70.0
@@ -145,7 +145,7 @@ gorm.io/gorm/logger
 gorm.io/gorm/migrator
 gorm.io/gorm/schema
 gorm.io/gorm/utils
-# vitess.io/vitess v0.21.2
+# vitess.io/vitess v0.21.3
 ## explicit; go 1.23.5
 vitess.io/vitess/go/bytes2
 vitess.io/vitess/go/hack

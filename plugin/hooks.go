@@ -36,7 +36,6 @@ func (s *SQLInsights) insightsBefore(sType statType) func(*gorm.DB) {
 
 		// store our current time in our statement map using the statement pointer address as the key as this should be unique for each statement, at least in the context of a single request
 		s.statementMaps[ctxMapKey].Store(*(*uint64)(unsafe.Pointer(db.Statement)), time.Now().UTC())
-
 	}
 }
 
