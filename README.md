@@ -32,6 +32,7 @@ func addPlugins(db *gorm.DB) {
 		AutoPurgeAge:           time.Hour * 24 * 7,    // automatically purge data older than 7 days
 		CollectSystemResources: true,                  // periodically collect the CPU and memory usage
 		StopTimeLimit:          time.Second * 5,       // default length of time to wait when stopping the plugin when the plugin is being unregistered
+		SkipAutomigration:      false,                 // if you want to skip the automigration of the SQLInsights tables, set this to true, but make sure you do this at least once after each update to the plugin
 
 		// setup configuration for our dashboard
 		DashboardConfig: &insights.DashboardConfig{
@@ -55,10 +56,10 @@ goos: windows
 goarch: amd64
 pkg: github.com/viocle/go-gorm-sql-insights/plugin
 cpu: AMD Ryzen 9 5900X 12-Core Processor
-BenchmarkSQLInsights/queryNoHooks-24              331490              3390 ns/op            3420 B/op         44 allocs/op
-BenchmarkSQLInsights/queryHooks-24                174385              6006 ns/op            4439 B/op         65 allocs/op
+BenchmarkSQLInsights/queryNoHooks-24              330961              3388 ns/op            3420 B/op         44 allocs/op
+BenchmarkSQLInsights/queryHooks-24                171832              6143 ns/op            4618 B/op         64 allocs/op
 PASS
-ok      github.com/viocle/go-gorm-sql-insights/plugin   5.696s
+ok      github.com/viocle/go-gorm-sql-insights/plugin   3.502s
 ```
 ```
 > go version

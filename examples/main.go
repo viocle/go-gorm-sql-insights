@@ -43,6 +43,7 @@ func addPlugins(db *gorm.DB) {
 		AutoPurgeAge:           time.Hour * 24 * 7,    // automatically purge data older than 7 days
 		CollectSystemResources: true,                  // periodically collect the CPU and memory usage
 		StopTimeLimit:          time.Second * 5,       // default length of time to wait when stopping the plugin when the plugin is being unregistered
+		SkipAutomigration:      false,                 // if you want to skip the automigration of the SQLInsights tables, set this to true, but make sure you do this at least once after each update to the plugin
 
 		// setup configuration for our dashboard
 		DashboardConfig: &insights.DashboardConfig{

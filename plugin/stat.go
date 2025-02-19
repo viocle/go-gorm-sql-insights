@@ -28,6 +28,7 @@ type stat struct {
 	Error      bool
 	Callers    []*callerInfo
 	CallerHash string
+	CallerJSON []byte
 }
 
 // buildStatHistory builds a stat history from the specified list stat values
@@ -45,6 +46,8 @@ func (s *SQLInsights) buildStatHistory(now time.Time, keyHash string, sType stat
 		HashID:     keyHash,
 		Type:       sType,
 		Count:      len(statValues),
+		TookMin:    -1,
+		RowsMin:    -1,
 	}
 	// calculate the min, max, avg, and sum
 	tookValues := make([]float64, 0, len(statValues))
@@ -59,13 +62,13 @@ func (s *SQLInsights) buildStatHistory(now time.Time, keyHash string, sType stat
 			rowValues = append(rowValues, statValue.Rows)
 
 			// Min/Max
-			if statValue.Took < statHistory.TookMin {
+			if statHistory.TookMin < 0 || statValue.Took < statHistory.TookMin {
 				statHistory.TookMin = statValue.Took
 			}
 			if statValue.Took > statHistory.TookMax {
 				statHistory.TookMax = statValue.Took
 			}
-			if statValue.Rows < statHistory.RowsMin {
+			if statHistory.RowsMin < 0 || statValue.Rows < statHistory.RowsMin {
 				statHistory.RowsMin = statValue.Rows
 			}
 			if statValue.Rows > statHistory.RowsMax {
@@ -85,7 +88,7 @@ func (s *SQLInsights) buildStatHistory(now time.Time, keyHash string, sType stat
 					CreatedAt: now,
 					HashID:    keyHash,
 				}
-				callerHistoryValue.SetValue(statValue.Callers)
+				callerHistoryValue.SetJSON(statValue.CallerJSON)
 				callerHistory = append(callerHistory, callerHistoryValue)
 			}
 		}

@@ -17,14 +17,14 @@ type SQLInsightsHash struct {
 
 // SQLInsightsApp defines an application/instance so we can segregate statistics by different applications or instances. Ex. API instances running in different regions or Lambda functions
 type SQLInsightsApp struct {
-	ID              int    `gorm:"primaryKey;autoIncrement"` // auto incrementing ID
+	ID              uint   `gorm:"primaryKey;autoIncrement"` // auto incrementing ID
 	InstanceAppName string `gorm:"size:191;index"`           // application/Instance ID/name
 }
 
 // SQLInsightsHistory defines a historical record of a specific SQL statement at the specified time for the specified instance
 type SQLInsightsHistory struct {
-	ID         int64     `gorm:"primaryKey;autoIncrement"` // auto incrementing ID
-	InstanceID int       `gorm:"index"`                    // SQLInsightsApp ID
+	ID         uint      `gorm:"primaryKey;autoIncrement"` // auto incrementing ID
+	InstanceID uint      `gorm:"index"`                    // SQLInsightsApp ID
 	CreatedAt  time.Time `gorm:"type:datetime(6)"`         // History aggregation
 	HashID     string    `gorm:"size:32;index"`            // hash ID
 	Type       statType  `gorm:"size:12;index"`            // stat type
@@ -46,10 +46,10 @@ type SQLInsightsHistory struct {
 
 // SQLInsightsCallerHistory defines a historcal record of a specified SQL statement and the caller information when first seen
 type SQLInsightsCallerHistory struct {
-	ID        string    `gorm:"primaryKey;size:32"` // caller hash
-	CreatedAt time.Time `gorm:"type:datetime(6)"`   // created/first seen
-	HashID    string    `gorm:"size:32;index"`      // hash ID
-	Value     []byte    `gorm:"type:LONGBLOB"`      // caller value
+	ID        string    `gorm:"primaryKey;size:32"`       // caller hash
+	CreatedAt time.Time `gorm:"type:datetime(6)"`         // created/first seen
+	HashID    string    `gorm:"primaryKey;size:32;index"` // hash ID
+	Value     []byte    `gorm:"type:LONGBLOB"`            // caller value
 }
 
 // SetValue serializes the callers as a JSON string and stores result in Value
@@ -60,6 +60,11 @@ func (s *SQLInsightsCallerHistory) SetValue(callers []*callerInfo) {
 			s.Value = b
 		}
 	}
+}
+
+// SetJSON sets the Value as a JSON string
+func (s *SQLInsightsCallerHistory) SetJSON(b []byte) {
+	s.Value = b
 }
 
 // GetValue deserializes the Value as a JSON string and returns the callers

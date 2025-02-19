@@ -2,6 +2,7 @@ package insights
 
 import (
 	"crypto/md5"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -25,10 +26,11 @@ type SQLInsights struct {
 	config Config
 
 	// InstanceAppID is the SQLInsightsApp ID for the the defined InstanceID
-	instanceAppID int
+	instanceAppID uint
 
 	// statistics table used in between storage intervals
 	stats        map[statType]map[string][]*stat
+	statsBuf     []*SQLInsightsHistory
 	keyHashes    map[string]struct{}            // keyHash
 	callerHashes map[string]map[string]struct{} // keyHash -> callerHash
 	statsLock    sync.Mutex
@@ -68,6 +70,9 @@ type Config struct {
 
 	// The maximum time to wait for the plugin to stop and flush any remaining statistics to the DB when being unregistered
 	StopTimeLimit time.Duration
+
+	// SkipAutomigration specifies if the plugin should skip the automigration of the statistics tables. If set to true, the tables should be manually migrated before using this plugin and after any plugin updates
+	SkipAutomigration bool
 }
 
 // New creates a new Gorm SQLInsights plugin with specified config and starts the background collector and reporter.
@@ -86,9 +91,10 @@ func New(config Config) *SQLInsights {
 
 	// create our new SQLInsights plugin instance
 	ret := &SQLInsights{
-		instanceAppID: -1,
+		instanceAppID: 0,
 		config:        config,
 		stats:         make(map[statType]map[string][]*stat, 1),
+		statsBuf:      make([]*SQLInsightsHistory, 0, 100),
 		keyHashes:     make(map[string]struct{}, 1),
 		callerHashes:  make(map[string]map[string]struct{}, 1),
 		statsLock:     sync.Mutex{},
@@ -113,7 +119,9 @@ func New(config Config) *SQLInsights {
 
 	if config.DB != nil {
 		// perform automigration of our statistics tables
-		_ = ret.StatDB().AutoMigrate(autoMigration()...)
+		if !config.SkipAutomigration {
+			_ = ret.StatDB().AutoMigrate(autoMigration()...)
+		}
 
 		// load/store our InstanceID/App name
 		if config.InstanceID != "" {
@@ -205,6 +213,7 @@ func (s *SQLInsights) collector() {
 	purgeCheck := time.NewTicker(purgeInterval)
 	defer purgeCheck.Stop()
 	lastPurge := time.Time{}
+	newStats := false
 	for {
 		select {
 		case statValue := <-s.statsChan:
@@ -212,11 +221,15 @@ func (s *SQLInsights) collector() {
 			s.statsLock.Lock()
 			// store this statistic
 			s.unsafeAddStat(statValue)
+			newStats = true
 			s.statsLock.Unlock()
 		case <-reportTicker.C:
-			// report the statistics
+			// report the statistics if we have new values to report
 			s.statsLock.Lock()
-			s.unsafeReportStatistics(time.Now().UTC())
+			if newStats {
+				s.unsafeReportStatistics(time.Now().UTC())
+				newStats = false
+			}
 			s.statsLock.Unlock()
 		case <-purgeCheck.C:
 			// purge old statistics
@@ -257,18 +270,23 @@ func (s *SQLInsights) unsafeReportStatistics(now time.Time) {
 		}
 
 		// loop through our stats table and report each one
+		keyHashIDs := make([]string, 0, 10)
+		keyHashes := make(map[string]*SQLInsightsHash, 10)
+		callerHistoryIDs := make([]string, 0, 10)
+		callerHistories := make(map[string]*SQLInsightsCallerHistory, 10)
 		for statType, statTypeMap := range s.stats {
 			for keyHash, stats := range statTypeMap {
 				if keyHash != "" && len(stats) > 0 {
 					// store the key hash in the DB if it currently does not exist
 					if _, ok := s.keyHashes[keyHash]; !ok {
 						s.keyHashes[keyHash] = struct{}{}
-						_ = s.StatDB().Where("id = ?", keyHash).FirstOrCreate(&SQLInsightsHash{
+						keyHashIDs = append(keyHashIDs, keyHash)
+						keyHashes[keyHash] = &SQLInsightsHash{
 							ID:        keyHash,
 							CreatedAt: now,
 							Statement: stats[0].Key,
 							NumVars:   stats[0].NumVars,
-						})
+						}
 					}
 
 					// build the stat and caller history (if enabled)
@@ -279,8 +297,8 @@ func (s *SQLInsights) unsafeReportStatistics(now time.Time) {
 							statHistory.Mem = resources.MemoryPercentage
 						}
 
-						// store the stat history in the DB
-						_ = s.StatDB().Create(*statHistory)
+						// add to statsBuf for bulk insert
+						s.statsBuf = append(s.statsBuf, statHistory)
 
 						if len(callerHistory) > 0 {
 							// store the caller history in the DB if they currently do not exist
@@ -291,7 +309,8 @@ func (s *SQLInsights) unsafeReportStatistics(now time.Time) {
 								if _, ok := s.callerHashes[keyHash][callerHistoryValue.ID]; !ok {
 									// we have not seen this caller hash before, so store it and log it in our local hash table
 									s.callerHashes[keyHash][callerHistoryValue.ID] = struct{}{}
-									_ = s.StatDB().Where("hash_id = ? AND id = ?", keyHash, callerHistoryValue.ID).FirstOrCreate(callerHistoryValue)
+									callerHistoryIDs = append(callerHistoryIDs, keyHash+callerHistoryValue.ID)
+									callerHistories[keyHash+callerHistoryValue.ID] = callerHistoryValue
 								}
 							}
 						}
@@ -299,12 +318,63 @@ func (s *SQLInsights) unsafeReportStatistics(now time.Time) {
 				}
 			}
 		}
-	}
 
-	// clear our stats table, leaving our map types and their hashes allocated
-	for _, statTypeMap := range s.stats {
-		for _, stats := range statTypeMap {
-			clear(stats)
+		if len(keyHashes) > 0 {
+			// check if we have these SQLInsightsHash values in the DB and insert if we don't
+			// query for existing key hashes using our keyHashIDs list
+			var existingKeyHashes []string
+			_ = s.StatDB().Model(&SQLInsightsHash{}).Select("id").Where("id IN ?", keyHashIDs).Scan(&existingKeyHashes)
+			// removing existing values from keyHashes where we already have them in the DB
+			for _, existingKeyHash := range existingKeyHashes {
+				delete(keyHashes, existingKeyHash)
+			}
+			if len(keyHashes) > 0 {
+				// insert our new key hashes
+				toInsert := make([]*SQLInsightsHash, 0, len(keyHashes))
+				for _, keyHash := range keyHashes {
+					toInsert = append(toInsert, keyHash)
+				}
+				_ = s.StatDB().Create(toInsert)
+			}
+		}
+
+		if len(callerHistories) > 0 {
+			// check if we have these SQLInsightsCallerHistory values in the DB and insert if we don't
+			// query for existing caller hashes using our callerHistoryIDs list
+			var existingCallerHashes []string
+			_ = s.StatDB().Model(&SQLInsightsCallerHistory{}).Select("CONCAT(id, hash_id) AS id").Where("id IN ?", callerHistoryIDs).Scan(&existingCallerHashes)
+			// removing existing values from callerHistories where we already have them in the DB
+			for _, existingCallerHash := range existingCallerHashes {
+				delete(callerHistories, existingCallerHash)
+			}
+			if len(callerHistories) > 0 {
+				// insert our new caller hashes
+				toInsert := make([]*SQLInsightsCallerHistory, 0, len(callerHistories))
+				for _, callerHistory := range callerHistories {
+					toInsert = append(toInsert, callerHistory)
+				}
+				_ = s.StatDB().Create(toInsert)
+			}
+		}
+
+		if len(s.statsBuf) == 0 {
+			// no stats to report
+			return
+		}
+
+		// store our stats in the DB
+		_ = s.StatDB().Create(s.statsBuf)
+
+		// clear our statsBuf but keep the capacity
+		clear(s.statsBuf)
+		s.statsBuf = s.statsBuf[:0]
+
+		// clear our stats table, leaving our map types and their hashes allocated
+		for _, statTypeMap := range s.stats {
+			for hashKey := range statTypeMap {
+				clear(statTypeMap[hashKey])
+				statTypeMap[hashKey] = statTypeMap[hashKey][:0]
+			}
 		}
 	}
 }
@@ -364,8 +434,11 @@ func (s *SQLInsights) insightsAddStat(statValue *stat) {
 
 	// get hash of our callers if we have any and are tracking this
 	if len(statValue.Callers) > 0 && s.config.CollectCallerDepth > 0 {
-		// we have one ore more callers, hash them as one
-		statValue.CallerHash = hash(fmt.Sprintf("%v", statValue.Callers))
+		// we have one ore more callers, serialize and hash
+		statValue.CallerJSON, _ = json.Marshal(statValue.Callers)
+		if len(statValue.CallerJSON) > 0 {
+			statValue.CallerHash = hashBytes(statValue.CallerJSON)
+		}
 	}
 
 	// send to the stats channel, wait if buffer is full
@@ -375,5 +448,11 @@ func (s *SQLInsights) insightsAddStat(statValue *stat) {
 // hash returns the MD5 hash of the input string
 func hash(s string) string {
 	// file deepcode ignore InsecureHash: not used for cryptographic purposes
-	return fmt.Sprintf("%x", md5.Sum([]byte(s)))
+	return hashBytes([]byte(s))
+}
+
+// hashBytes returns the MD5 hash of the input byte slice
+func hashBytes(b []byte) string {
+	// file deepcode ignore InsecureHash: not used for cryptographic purposes
+	return fmt.Sprintf("%x", md5.Sum(b))
 }

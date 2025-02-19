@@ -16,7 +16,7 @@ func (s *SQLInsights) getTimeTaken(ctxMapKey string, db *gorm.DB) (float64, time
 	var took float64
 	if inTimeA, ok := s.statementMaps[ctxMapKey].LoadAndDelete(*(*uint64)(unsafe.Pointer(db.Statement))); ok {
 		if inTime, ok := inTimeA.(time.Time); ok {
-			took = float64(int64(float64(now.Sub(inTime).Nanoseconds())/1e9)) / 1000 // fractional milliseconds
+			took = float64(int64(float64(now.Sub(inTime).Nanoseconds())/1e6)) / 1000 // fractional milliseconds
 			// return our execution duration
 			return took, now, nil
 		}

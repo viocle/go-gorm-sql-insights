@@ -43,7 +43,7 @@ func (s *SQLInsights) Initialize(db *gorm.DB) (err error) {
 			return e
 		}
 	}
-	return
+	return nil
 }
 
 // unregister this plugin from the specified Gorm DB instance

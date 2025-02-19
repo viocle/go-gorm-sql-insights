@@ -83,7 +83,7 @@ func (s *SQLInsights) apiHandler() func(w http.ResponseWriter, r *http.Request) 
 // SQLQueryCountsResult defines the result of the SQLQueryCounts method
 type SQLQueryCountsResult struct {
 	InstanceAppID string
-	InstanceID    int
+	InstanceID    uint
 	Counts        []*SQLQueryCountsResultDaySummary
 }
 
