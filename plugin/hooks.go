@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"errors"
 	"time"
 	"unsafe"
 
@@ -56,7 +57,7 @@ func (s *SQLInsights) insightsAfter(sType statType) func(*gorm.DB) {
 				NumVars:   len(db.Statement.Vars),
 				Took:      took,
 				Rows:      db.RowsAffected,
-				Error:     db.Error != nil,
+				Error:     db.Error != nil && !errors.Is(db.Error, gorm.ErrRecordNotFound),
 				Callers:   getCallers(s.config.CollectCallerDepth),
 			}
 			go s.insightsAddStat(v)
