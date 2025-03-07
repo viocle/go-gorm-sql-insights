@@ -75,19 +75,39 @@ type Config struct {
 	SkipAutomigration bool
 }
 
+// ApplyDefaults applies default values to the config if they are not set
+func (c *Config) applyDefaults() {
+	if c.CollectCallerDepth < 0 {
+		c.CollectCallerDepth = 0
+	}
+	if c.MaxStatisticsBufferSize <= 0 {
+		c.MaxStatisticsBufferSize = 100
+	}
+	if c.AutoPurgeAge < 0 {
+		c.AutoPurgeAge = 0
+	}
+
+	// set up a default dashboard config if one is not provided
+	if c.DashboardConfig == nil {
+		c.DashboardConfig = &DashboardConfig{
+			TimeLocation: time.UTC,
+		}
+	}
+
+	// get hostname if InstanceID is empty
+	c.InstanceID = strings.TrimSpace(c.InstanceID)
+	if c.InstanceID == "" {
+		if hostname, err := os.Hostname(); err == nil {
+			c.InstanceID = hostname
+		}
+	}
+}
+
 // New creates a new Gorm SQLInsights plugin with specified config and starts the background collector and reporter.
 // When the plugin is no longer needed, call Stop() to unregister this plugin and stop the background collector and reporter processes as well as store any existing statistics that haven't been reported yet
 func New(config Config) *SQLInsights {
 	// set default values if not specified
-	if config.CollectCallerDepth < 0 {
-		config.CollectCallerDepth = 0
-	}
-	if config.MaxStatisticsBufferSize <= 0 {
-		config.MaxStatisticsBufferSize = 100
-	}
-	if config.AutoPurgeAge <= 0 {
-		config.AutoPurgeAge = time.Hour * 24 // 24 hours
-	}
+	config.applyDefaults()
 
 	// create our new SQLInsights plugin instance
 	ret := &SQLInsights{
@@ -102,58 +122,10 @@ func New(config Config) *SQLInsights {
 		stopChan:      make(chan chan struct{}),
 		statementMaps: map[string]*sync.Map{_statTypeQuery.String(): {}, _statTypeRaw.String(): {}},
 	}
-	// set up a default dashboard config if one is not provided
-	if config.DashboardConfig == nil {
-		config.DashboardConfig = &DashboardConfig{
-			TimeLocation: time.UTC,
-		}
-	}
-
-	// get hostname if InstanceID is empty
-	ret.config.InstanceID = strings.TrimSpace(config.InstanceID)
-	if ret.config.InstanceID == "" {
-		if hostname, err := os.Hostname(); err == nil {
-			ret.config.InstanceID = hostname
-		}
-	}
 
 	if config.DB != nil {
 		// perform automigration of our statistics tables
-		if !config.SkipAutomigration {
-			_ = ret.StatDB().AutoMigrate(autoMigration()...)
-		}
-
-		// load/store our InstanceID/App name
-		if config.InstanceID != "" {
-			// store our InstanceID/App name if it currently does not exist
-			appInstance := SQLInsightsApp{
-				InstanceAppName: config.InstanceID,
-			}
-			if err := ret.StatDB().Where("instance_app_name = ?", config.InstanceID).FirstOrCreate(&appInstance).Error; err == nil && appInstance.ID >= 0 {
-				ret.instanceAppID = appInstance.ID
-			}
-		}
-
-		// load our known key hashes
-		var keyHashes []SQLInsightsHash
-		if err := ret.StatDB().Find(&keyHashes).Error; err == nil {
-			for _, keyHash := range keyHashes {
-				ret.keyHashes[keyHash.ID] = struct{}{}
-			}
-		}
-
-		// load our known caller hashes
-		if config.CollectCallerDepth > 0 {
-			var callerHashes []SQLInsightsCallerHistory
-			if err := ret.StatDB().Find(&callerHashes).Error; err == nil {
-				for _, callerHash := range callerHashes {
-					if _, ok := ret.callerHashes[callerHash.HashID]; !ok {
-						ret.callerHashes[callerHash.HashID] = make(map[string]struct{}, 1)
-					}
-					ret.callerHashes[callerHash.HashID][callerHash.ID] = struct{}{}
-				}
-			}
-		}
+		ret.performAutoMigration()
 	}
 
 	// start background collector
@@ -161,6 +133,45 @@ func New(config Config) *SQLInsights {
 
 	// return our new SQLInsights
 	return ret
+}
+
+// performAutoMigration performs the automigration of the statistics tables
+func (s *SQLInsights) performAutoMigration() {
+	if !s.config.SkipAutomigration {
+		_ = s.StatDB().AutoMigrate(autoMigration()...)
+	}
+
+	// load/store our InstanceID/App name
+	if s.config.InstanceID != "" {
+		// store our InstanceID/App name if it currently does not exist
+		appInstance := SQLInsightsApp{
+			InstanceAppName: s.config.InstanceID,
+		}
+		if err := s.StatDB().Where("instance_app_name = ?", s.config.InstanceID).FirstOrCreate(&appInstance).Error; err == nil && appInstance.ID >= 0 {
+			s.instanceAppID = appInstance.ID
+		}
+	}
+
+	// load our known key hashes
+	var keyHashes []SQLInsightsHash
+	if err := s.StatDB().Find(&keyHashes).Error; err == nil {
+		for _, keyHash := range keyHashes {
+			s.keyHashes[keyHash.ID] = struct{}{}
+		}
+	}
+
+	// load our known caller hashes
+	if s.config.CollectCallerDepth > 0 {
+		var callerHashes []SQLInsightsCallerHistory
+		if err := s.StatDB().Find(&callerHashes).Error; err == nil {
+			for _, callerHash := range callerHashes {
+				if _, ok := s.callerHashes[callerHash.HashID]; !ok {
+					s.callerHashes[callerHash.HashID] = make(map[string]struct{}, 1)
+				}
+				s.callerHashes[callerHash.HashID][callerHash.ID] = struct{}{}
+			}
+		}
+	}
 }
 
 // IsStopped returns true if the plugin has been stopped

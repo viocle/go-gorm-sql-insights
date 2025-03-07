@@ -263,7 +263,7 @@ func getFieldsFromExpr(area parsedFieldsArea, tableFields *ParsedFields, e inter
 		}
 		if valueOf.Kind() == reflect.Slice {
 			// slice of values, process each one
-			for i := 0; i < valueOf.Len(); i++ {
+			for i := range valueOf.Len() {
 				if valueOfI := valueOf.Index(i).Interface(); valueOfI != nil {
 					getFieldsFromExpr(area, tableFields, valueOfI, nil)
 				}
@@ -271,7 +271,7 @@ func getFieldsFromExpr(area parsedFieldsArea, tableFields *ParsedFields, e inter
 			return
 		}
 		// check each field in the struct, looking for an expression to process
-		for i := 0; i < valueOf.NumField(); i++ {
+		for i := range valueOf.NumField() {
 			field := valueOf.Field(i)
 			if field.CanInterface() {
 				fieldTypeName := field.Type().Name()

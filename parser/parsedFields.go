@@ -38,68 +38,56 @@ func (f *ParsedFields) Equal(other *ParsedFields) bool {
 	if f.DefaultTableName != other.DefaultTableName {
 		return false
 	}
-	if len(f.FromFields) != len(other.FromFields) {
-		return false
-	}
-	if len(f.WhereFields) != len(other.WhereFields) {
-		return false
-	}
-	if len(f.GroupByFields) != len(other.GroupByFields) {
-		return false
-	}
-	if len(f.TableFields) != len(other.TableFields) {
-		return false
-	}
+
+	// compare alias map
 	if len(f.AliasMap) != len(other.AliasMap) {
 		return false
-	}
-	for key, value := range f.FromFields {
-		otherValue, ok := other.FromFields[key]
-		if !ok {
-			return false
-		}
-		for _, fieldName := range value {
-			if !slices.Contains(otherValue, fieldName) {
-				return false
-			}
-		}
-	}
-	for key, value := range f.WhereFields {
-		otherValue, ok := other.WhereFields[key]
-		if !ok {
-			return false
-		}
-		for _, fieldName := range value {
-			if !slices.Contains(otherValue, fieldName) {
-				return false
-			}
-		}
-	}
-	for key, value := range f.GroupByFields {
-		otherValue, ok := other.GroupByFields[key]
-		if !ok {
-			return false
-		}
-		for _, fieldName := range value {
-			if !slices.Contains(otherValue, fieldName) {
-				return false
-			}
-		}
-	}
-	for key, value := range f.TableFields {
-		otherValue, ok := other.TableFields[key]
-		if !ok {
-			return false
-		}
-		for _, fieldName := range value {
-			if !slices.Contains(otherValue, fieldName) {
-				return false
-			}
-		}
 	}
 	for key, value := range f.AliasMap {
 		if otherValue, ok := other.AliasMap[key]; !ok || value != otherValue {
 			return false
+		}
+	}
+
+	// compare our field maps
+	if !compareTableMaps(f.FromFields, other.FromFields) {
+		// FromFields are not equal
+		return false
+	}
+	if !compareTableMaps(f.WhereFields, other.WhereFields) {
+		// WhereFields are not equal
+		return false
+	}
+	if !compareTableMaps(f.GroupByFields, other.GroupByFields) {
+		// GroupByFields are not equal
+		return false
+	}
+	if !compareTableMaps(f.TableFields, other.TableFields) {
+		// TableFields are not equal
+		return false
+	}
+
+	// ParsedFields are equal
+	return true
+}
+
+// compareTableMaps compares two maps of table and their fields and returns true if they are equal. Order of fields is not considered
+func compareTableMaps(map1, map2 map[string][]string) bool {
+	if len(map1) != len(map2) {
+		return false
+	}
+	for key, map1Fields := range map1 {
+		map2Fields, ok := map2[key]
+		if !ok {
+			return false
+		}
+		if len(map1Fields) != len(map2Fields) {
+			return false
+		}
+		for _, fieldName := range map1Fields {
+			if !slices.Contains(map2Fields, fieldName) {
+				return false
+			}
 		}
 	}
 	return true

@@ -59,6 +59,26 @@ func TestSQLInsights(t *testing.T) {
 		CollectSystemResources: true,
 	})
 
+	// compare Config matches the expected values
+	if sInsights.config.InstanceID != "test" {
+		t.Fatalf("expected instance ID to be 'test', got %s", sInsights.config.InstanceID)
+	}
+	if sInsights.config.CollectCallerDepth != 5 {
+		t.Fatalf("expected CollectCallerDepth to be 5, got %d", sInsights.config.CollectCallerDepth)
+	}
+	if sInsights.config.CollectSystemResources != true {
+		t.Fatalf("expected CollectSystemResources to be true, got %t", sInsights.config.CollectSystemResources)
+	}
+	if sInsights.config.AutoPurgeAge != 0 {
+		t.Fatalf("expected AutoPurgeAge to be 0, got %d", sInsights.config.AutoPurgeAge)
+	}
+	if sInsights.config.StopTimeLimit != 0 {
+		t.Fatalf("expected StopTimeLimit to be 0, got %d", sInsights.config.StopTimeLimit)
+	}
+	if sInsights.config.SkipAutomigration != false {
+		t.Fatalf("expected SkipAutomigration to be false, got %t", sInsights.config.SkipAutomigration)
+	}
+
 	// setup plugin
 	db.Use(sInsights)
 

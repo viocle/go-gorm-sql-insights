@@ -5,6 +5,9 @@
 
 This is a [GORM](https://gorm.io/index.html) plugin to help gather insights into SQL queries being performed. The goal of this project is to make it easier to see the frequency of queries, their timing, and the resources consumed around them giving you the information to be better informed on queries that may need to be optimized through restructuring the SQL statement, changes to indexing, or utilize caching/dataloader technologies.
 
+> [!WARNING]  
+> This package is still a work in progress and under its initial development and testing. Some features may change or are currently incomplete.
+
 ## How to use
 Register this plugin using the `Use` method on the `*gorm.DB` instance you want to monitor. Example, add a generic addPlugins function to load your plugins, passing your *gorm.DB reference:
 ```
